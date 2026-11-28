@@ -236,7 +236,7 @@ body[data-density="compact"] .review-notes { padding-block: 6px; }
   main.mobile-diff > .source-content:not([hidden]) { display: flex; }
 }
 
-aside { overflow: hidden; }
+aside { overflow: hidden; padding-inline: 6px; }
 main.sidebar-right > .sidebar-resize { left: auto; right: calc(var(--sidebar-width) - 4px); }
 .sidebar-resize::after { content: ""; position: absolute; inset: 0 3px; background: transparent; }
 .sidebar-resize:hover::after, .sidebar-resize:focus-visible::after, .sidebar-resize[data-dragging="true"]::after { background: #a9b9e080; }

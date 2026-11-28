@@ -179,6 +179,7 @@ export function Explorer({ sidebar, token, active, theme, onSelect }: { sidebar:
         aria-label="Repository files"
         style={{
           colorScheme: theme,
+          "--trees-padding-inline-override": "0px",
           "--trees-theme-sidebar-bg": theme === "light" ? "#ffffff" : "#202022",
           "--trees-theme-sidebar-fg": theme === "light" ? "#4b4b52" : "#bdbdc6",
           "--trees-theme-list-active-selection-bg": theme === "light" ? "#18181b0d" : "#ffffff0b",

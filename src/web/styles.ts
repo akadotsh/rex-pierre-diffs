@@ -627,6 +627,70 @@ export const styles = stylex.create({
     display: "flex",
     flexDirection: "column"
   },
+  explorerTabs: {
+    display: "flex",
+    alignItems: "stretch",
+    flexShrink: "0",
+    minWidth: "0",
+    minHeight: "34px",
+    gap: "3px",
+    padding: "3px 6px",
+    overflowX: "auto",
+    borderBottom: "1px solid var(--border)",
+    background: "var(--surface)"
+  },
+  explorerTab: {
+    display: "flex",
+    flex: "0 0 auto",
+    alignItems: "center",
+    width: "fit-content",
+    minWidth: "0",
+    maxWidth: "180px",
+    border: "1px solid transparent",
+    borderRadius: "5px",
+    background: "transparent"
+  },
+  explorerTabSelect: {
+    flex: "0 1 auto",
+    minWidth: "0",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    minHeight: "26px",
+    padding: "0 4px 0 8px",
+    border: "0",
+    borderRadius: "4px",
+    background: "transparent",
+    color: "var(--muted)",
+    fontSize: "12px",
+    cursor: "pointer"
+  },
+  explorerTabActive: {
+    borderColor: "var(--border)",
+    background: "var(--selected)"
+  },
+  explorerTabLabelActive: {
+    color: "var(--text)"
+  },
+  explorerTabClose: {
+    display: "grid",
+    placeItems: "center",
+    width: "20px",
+    height: "20px",
+    marginRight: "3px",
+    minHeight: "0",
+    flexShrink: "0",
+    border: "0",
+    borderRadius: "4px",
+    padding: "0",
+    background: "transparent",
+    color: "var(--muted)",
+    opacity: "0",
+    cursor: "pointer",
+    transition: "opacity 100ms ease-out, color 100ms ease-out, transform 120ms var(--ease-out)",
+    ":hover": { color: "var(--text)" },
+    ":focus-visible": { opacity: "1" }
+  },
   srOnly: {
     position: "absolute",
     width: "1px",

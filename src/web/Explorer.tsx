@@ -19,7 +19,8 @@ const fileOptions = (theme: "dark" | "light") => ({
 export function Explorer({ sidebar, token, active, theme, onSelect }: { sidebar: HTMLElement; token: string; active: boolean; theme: "dark" | "light"; onSelect: () => void }) {
   const [listing, setListing] = useState<Listing>();
   const [error, setError] = useState("");
-  const [selected, setSelected] = useState<string>();
+  const [tabState, setTabState] = useState<{ open: string[]; active?: string }>({ open: [] });
+  const { open: tabs, active: selected } = tabState;
   const [file, setFile] = useState<{ name: string; contents: string }>();
   const [previewError, setPreviewError] = useState("");
   const [revision, setRevision] = useState(0);
@@ -29,13 +30,40 @@ export function Explorer({ sidebar, token, active, theme, onSelect }: { sidebar:
   const [target, setTarget] = useState("");
   const [messageStatus, setMessageStatus] = useState("");
   const [markdownPreview, setMarkdownPreview] = useState(true);
+  const activeTabRef = useRef<HTMLButtonElement>(null);
+  function openFile(path: string) {
+    setTabState(current => ({
+      open: current.open.includes(path) ? current.open : [...current.open, path],
+      active: path,
+    }));
+    if (selected !== path) setSelectedLines(null);
+    onSelect();
+  }
+  function closeFile(path: string) {
+    setTabState(current => {
+      const index = current.open.indexOf(path);
+      if (index < 0) return current;
+      const open = current.open.filter(item => item !== path);
+      return {
+        open,
+        active: current.active === path ? open[index] ?? open[index - 1] : current.active,
+      };
+    });
+    if (selected === path) {
+      setSelectedLines(null);
+      onSelect();
+    }
+  }
+  useEffect(() => {
+    activeTabRef.current?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [selected]);
   const request = (url: string, signal: AbortSignal) => fetch(url, { signal, headers: { "x-review-token": token } }).then(async response => {
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || "Could not load repository");
     return data;
   });
   const { model } = useFileTree({ paths: [], icons: { set: "standard", colored: false }, initialExpansion: "closed", renaming: false, dragAndDrop: false,
-    onSelectionChange: paths => { const path = paths[paths.length - 1]; if (path && model.getItem(path)?.isDirectory() === false) { setSelected(path); onSelect(); } },
+    onSelectionChange: paths => { const path = paths[paths.length - 1]; if (path && model.getItem(path)?.isDirectory() === false) openFile(path); },
     unsafeCSS: ":host { font-family: -apple-system, BlinkMacSystemFont, sans-serif; }",
   });
   const previousPaths = useRef("");
@@ -131,6 +159,39 @@ export function Explorer({ sidebar, token, active, theme, onSelect }: { sidebar:
       />
     </div>, sidebar)}
     <section className={`source-content ${stylex.props(styles.sourceContent).className}`} aria-label="File preview" hidden={!active}>
+      {tabs.length > 0 && <nav className={`explorer-tabs ${stylex.props(styles.explorerTabs).className}`} aria-label="Open files"
+        onWheel={event => {
+          const strip = event.currentTarget;
+          if (event.ctrlKey || event.deltaX !== 0 || strip.scrollWidth <= strip.clientWidth) return;
+          const delta = event.deltaMode === 1 ? event.deltaY * 16 : event.deltaMode === 2 ? event.deltaY * strip.clientWidth : event.deltaY;
+          strip.scrollLeft += delta;
+        }}
+      >
+        {tabs.map(path => {
+          const filename = path.split("/").at(-1) || path;
+          const duplicateName = tabs.some(other => other !== path && (other.split("/").at(-1) || other) === filename);
+          const name = duplicateName ? path : filename;
+          const isActive = selected === path;
+          return <div className={`explorer-tab${isActive ? " is-active" : ""} ${stylex.props(styles.explorerTab).className}${isActive ? ` ${stylex.props(styles.explorerTabActive).className}` : ""}`} key={path}>
+            <button
+              type="button"
+              className={`explorer-tab-select ${stylex.props(styles.explorerTabSelect).className}${isActive ? ` ${stylex.props(styles.explorerTabLabelActive).className}` : ""}`}
+              aria-current={isActive ? "page" : undefined}
+              ref={isActive ? activeTabRef : undefined}
+              title={path}
+              onClick={() => openFile(path)}
+            >{name}</button>
+            <button
+              type="button"
+              className={`explorer-tab-close ${stylex.props(styles.explorerTabClose).className}`}
+              aria-label={`Close ${name}`}
+              style={isActive ? { opacity: 1 } : undefined}
+              title={`Close ${name}`}
+              onClick={() => closeFile(path)}
+            ><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 4 8 8M12 4l-8 8" /></svg></button>
+          </div>;
+        })}
+      </nav>}
       <Virtualizer className={`code-scroll ${stylex.props(styles.codeScroll).className}`} contentClassName={stylex.props(styles.codeScrollContent).className}>
       {!selected ? <div className={`empty-state ${stylex.props(styles.emptyState).className}`}><h1>Explore your repository</h1><p>Select a file to read its source.</p></div>
         : image ? <img className={`repository-image-preview ${stylex.props(styles.repositoryImagePreview).className}`} src={"/api/file-asset?path=" + encodeURIComponent(selected) + "&token=" + encodeURIComponent(token)} alt={selected} />

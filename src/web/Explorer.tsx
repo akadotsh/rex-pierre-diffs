@@ -1,6 +1,6 @@
 import * as stylex from "@stylexjs/stylex";
 import { styles } from "./styles";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { marked } from "marked";
 import DOMPurify from "dompurify";
 import { createPortal } from "react-dom";
@@ -10,11 +10,13 @@ import { prepareFileTreeInput, type GitStatusEntry } from "@pierre/trees";
 import { FileTree, useFileTree } from "@pierre/trees/react";
 
 type Listing = { paths: string[]; statuses: Record<string, string> };
-const fileOptions = (theme: "dark" | "light") => ({
+const editorBackground = (theme: "dark" | "light") => theme === "light" ? "#ffffff" : "#19191b";
+const fileOptions = (theme: "dark" | "light", onPostRender: (node: HTMLElement) => void) => ({
   theme: theme === "light" ? "pierre-light" : "pierre-dark",
   themeType: theme,
   overflow: "scroll" as const,
-  unsafeCSS: `:host { --diffs-bg: ${theme === "light" ? "#ffffff" : "#19191b"}; }`,
+  onPostRender,
+  unsafeCSS: `:host { --diffs-bg: ${editorBackground(theme)}; } [data-code] { scrollbar-width: none; } [data-code]::-webkit-scrollbar { display: none; }`,
 });
 export function Explorer({ sidebar, token, active, theme, onSelect }: { sidebar: HTMLElement; token: string; active: boolean; theme: "dark" | "light"; onSelect: () => void }) {
   const [listing, setListing] = useState<Listing>();
@@ -30,6 +32,33 @@ export function Explorer({ sidebar, token, active, theme, onSelect }: { sidebar:
   const [target, setTarget] = useState("");
   const [messageStatus, setMessageStatus] = useState("");
   const [markdownPreview, setMarkdownPreview] = useState(true);
+  const [codeElement, setCodeElement] = useState<HTMLElement | null>(null);
+  const [scrollWidth, setScrollWidth] = useState(0);
+  const [gutterWidth, setGutterWidth] = useState(0);
+  const horizontalScroll = useRef<HTMLDivElement>(null);
+  const captureCode = useCallback((node: HTMLElement) => {
+    setCodeElement(node.shadowRoot?.querySelector<HTMLElement>("[data-code]") ?? null);
+  }, []);
+  useEffect(() => {
+    const bar = horizontalScroll.current;
+    if (!codeElement || !bar) return;
+    const measure = () => {
+      const gutter = codeElement.querySelector<HTMLElement>("[data-gutter]");
+      setGutterWidth(gutter?.getBoundingClientRect().width ?? 0);
+      const overflow = codeElement.scrollWidth - codeElement.clientWidth;
+      setScrollWidth(overflow > 0 ? overflow + bar.clientWidth : 0);
+    };
+    const sync = () => { bar.scrollLeft = codeElement.scrollLeft; };
+    const resize = new ResizeObserver(measure);
+    resize.observe(codeElement);
+    resize.observe(bar);
+    const mutations = new MutationObserver(measure);
+    mutations.observe(codeElement, { childList: true, subtree: true, characterData: true });
+    codeElement.addEventListener("scroll", sync, { passive: true });
+    measure();
+    sync();
+    return () => { resize.disconnect(); mutations.disconnect(); codeElement.removeEventListener("scroll", sync); };
+  }, [codeElement]);
   const activeTabRef = useRef<HTMLButtonElement>(null);
   function openFile(path: string) {
     setTabState(current => ({
@@ -158,7 +187,7 @@ export function Explorer({ sidebar, token, active, theme, onSelect }: { sidebar:
         } as React.CSSProperties}
       />
     </div>, sidebar)}
-    <section className={`source-content ${stylex.props(styles.sourceContent).className}`} aria-label="File preview" hidden={!active}>
+    <section className={`source-content ${stylex.props(styles.sourceContent).className}`} style={{ background: editorBackground(theme) }} aria-label="File preview" hidden={!active}>
       {tabs.length > 0 && <nav className={`explorer-tabs ${stylex.props(styles.explorerTabs).className}`} aria-label="Open files"
         onWheel={event => {
           const strip = event.currentTarget;
@@ -198,9 +227,14 @@ export function Explorer({ sidebar, token, active, theme, onSelect }: { sidebar:
         : previewError ? <div className={`empty-state ${stylex.props(styles.emptyState).className}`} role="alert"><h1>Could not preview file</h1><p>{previewError}</p></div>
         : !displayed ? <div className={`empty-state ${stylex.props(styles.emptyState).className}`} role="status">Loading {selected}…</div>
         : markdown && markdownPreview ? <><div className={`markdown-preview-toolbar ${stylex.props(styles.markdownPreviewToolbar).className}`}><span>{selected}</span><button onClick={() => setMarkdownPreview(false)}>Source</button></div><article className={`markdown-preview ${stylex.props(styles.markdownPreview).className}`} dangerouslySetInnerHTML={{__html:DOMPurify.sanitize(marked.parse(displayed.contents) as string)}} /></>
-        : <><div className={`source-toolbar ${stylex.props(styles.sourceToolbar).className}`}>{markdown && <button onClick={() => setMarkdownPreview(true)}>Preview</button>}</div><File file={displayed} options={{...fileOptions(theme), enableLineSelection:true, onLineSelectionEnd:setSelectedLines}} selectedLines={selectedLines} lineAnnotations={annotations} renderAnnotation={(annotation: LineAnnotation) => annotation.lineNumber === selectedLines?.end ? <div className={`inline-composer ${stylex.props(styles.inlineComposer).className}`} role="region" aria-label="Ask Agent about selected lines"><div className={`composer-heading ${stylex.props(styles.composerHeading).className}`}><strong>Ask Agent · {selectedLines.start}{selectedLines.end !== selectedLines.start ? `–${selectedLines.end}` : ""}</strong><button className={`composer-close ${stylex.props(styles.composerClose).className}`} aria-label="Close composer" onClick={() => setSelectedLines(null)}>×</button></div><textarea aria-label="Question for agent" value={question} onChange={event => setQuestion(event.target.value)} placeholder="Ask about these lines…" rows={3}/><div className={`composer-actions ${stylex.props(styles.composerActions).className}`}><select aria-label="Target Rex pane" value={target} onChange={event => setTarget(event.target.value)}><option value="">{targets.length ? "Choose agent pane…" : "No recognized agent panes"}</option>{targets.map(agent => <option key={agent.id} value={agent.id}>{agent.agent} · {agent.id.slice(-6)}</option>)}</select><button className={`ask-agent-button ${stylex.props(styles.askAgentButton).className}`} disabled={!targets.some(agent => agent.id === target)} onClick={() => void sendToAgent()}>Ask Agent</button></div>{messageStatus && <small>{messageStatus}</small>}</div> : null} />{!displayed.contents && <p className="source-empty">This file is empty.</p>}</>}
+        : <><div className={`source-toolbar ${stylex.props(styles.sourceToolbar).className}`}>{markdown && <button onClick={() => setMarkdownPreview(true)}>Preview</button>}</div><File file={displayed} options={{...fileOptions(theme, captureCode), enableLineSelection:true, onLineSelectionEnd:setSelectedLines}} selectedLines={selectedLines} lineAnnotations={annotations} renderAnnotation={(annotation: LineAnnotation) => annotation.lineNumber === selectedLines?.end ? <div className={`inline-composer ${stylex.props(styles.inlineComposer).className}`} role="region" aria-label="Ask Agent about selected lines"><div className={`composer-heading ${stylex.props(styles.composerHeading).className}`}><strong>Ask Agent · {selectedLines.start}{selectedLines.end !== selectedLines.start ? `–${selectedLines.end}` : ""}</strong><button className={`composer-close ${stylex.props(styles.composerClose).className}`} aria-label="Close composer" onClick={() => setSelectedLines(null)}>×</button></div><textarea aria-label="Question for agent" value={question} onChange={event => setQuestion(event.target.value)} placeholder="Ask about these lines…" rows={3}/><div className={`composer-actions ${stylex.props(styles.composerActions).className}`}><select aria-label="Target Rex pane" value={target} onChange={event => setTarget(event.target.value)}><option value="">{targets.length ? "Choose agent pane…" : "No recognized agent panes"}</option>{targets.map(agent => <option key={agent.id} value={agent.id}>{agent.agent} · {agent.id.slice(-6)}</option>)}</select><button className={`ask-agent-button ${stylex.props(styles.askAgentButton).className}`} disabled={!targets.some(agent => agent.id === target)} onClick={() => void sendToAgent()}>Ask Agent</button></div>{messageStatus && <small>{messageStatus}</small>}</div> : null} />{!displayed.contents && <p className="source-empty">This file is empty.</p>}</>}
 
       </Virtualizer>
+      <div ref={horizontalScroll} className="source-horizontal-scroll" aria-label="Scroll file horizontally" tabIndex={0}
+        style={{ marginLeft: gutterWidth, height: selected && !image && !previewError && displayed && !(markdown && markdownPreview) && scrollWidth > 0 ? 12 : 0 }}
+        onScroll={event => { if (codeElement) codeElement.scrollLeft = event.currentTarget.scrollLeft; }}>
+        <div style={{ width: scrollWidth, height: 1 }} />
+      </div>
     </section>
   </>;
 }
